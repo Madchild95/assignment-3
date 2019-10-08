@@ -3,6 +3,8 @@ title: "Assignment 3 - Part 1 - Voice In Schizophrenia"
 author: "Riccardo Fusaroli"
 date: "August 09, 2019"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -97,27 +99,38 @@ Only then (when everything works) turn the code into a function and use map_df()
 See placeholder code here for help.
 
 ```{r}
-library(tidyverse)
+library(pacman)
+pacman::p_load(tidyverse, purrr, plyr)
 
 read_pitch <- function(filename) {
     # load data
-    
+    file <- read.delim(filename)
     # parse filename to extract study, diagnosis, subject and trial
-    
+    match <- str_match(filename, "Study([\\d]+)D([\\d]+)S([\\d]+)T([\\d]+)")
     # extract pitch descriptors (mean, sd, iqr, etc)
-    
+    desc <- file %>% dplyr::summarize(
+      sd_pitch = sd(f0),
+      mean_pitch = mean(f0),
+      IQR_pitch = IQR(f0),
+      min_pitch = min(f0),
+      max_pitch = max(f0)
+      )
     # combine all this data in one dataset
+    data <- cbind(match,desc)
+    
+    x <- c("file", "study", "diagnosis", "subject", "trial", "sd_pitch", "mean_pitch", "iqr_pitch", "min_pitch", "max_pitch")
+    
+    colnames(data) <- x
     return(data)
 }
 
 # test it on just one file while writing the function
-test_data = read_pitch("Pitch/a_file_to_test.txt")
+test_data = read_pitch("Pitch/Study1D0S101T1_f0.txt")
 
 # when you've created a function that works, you can
-pitch_data = list.files(path = "Assignment3/data/Pitch/",pattern = ".txt") %>% ## NB replace with your path to the files
+pitch_data = list.files(path = "/Users/matilde/Desktop/AU/Experimental Methods III/Assignment 3/assignment-3/Pitch",pattern = ".txt", full.names = T) %>% ## NB replace with your path to the files
     purrr::map_df(read_pitch)
-
-write_csv(pitch_data, ...)
+write.csv(pitch_data, file = "pitch_data.csv")
 
 ```
 
@@ -126,13 +139,18 @@ write_csv(pitch_data, ...)
 
 ```{r}
 # Let's start with the demographic and clinical data
-
+demographic <- read.csv("DemographicData.csv",sep = ";")
+summary(demographic)
 # then duration data
-
+art <- read.delim("Articulation.txt",sep = ",")
+summary(art)
 # Finally the pitch data
-
+pitch_data <- plyr::rename(pitch_data, c("file" = "soundname", "subject" = "Participant")) 
+summary(pitch_data)
 # Now we merge them
-
+art_pitch <- merge(art, pitch_data, by = "soundname")
+art_pitch_demo <- merge(art_pitch, demographic, by = "Participant")
+summary(art_pitch_demo)
 # Now we save them
 
 ```
