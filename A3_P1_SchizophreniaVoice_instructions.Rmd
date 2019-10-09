@@ -140,18 +140,30 @@ write.csv(pitch_data, file = "pitch_data.csv")
 ```{r}
 # Let's start with the demographic and clinical data
 demographic <- read.csv("DemographicData.csv",sep = ";")
-summary(demographic)
+#Add 1000 to participant number for study 5 and 6 as these are not unique
+demographic$Participant <- ifelse(demographic$Study == 5|demographic$Study == 6, demographic$Participant + 1000, demographic$Participant)
+#Diagnosis as 0 and 1
+demographic$Diagnosis <- ifelse(demographic$Diagnosis=="Control", 0, 1)
 # then duration data
 art <- read.delim("Articulation.txt",sep = ",")
-summary(art)
 # Finally the pitch data
-pitch_data <- plyr::rename(pitch_data, c("file" = "soundname", "subject" = "Participant")) 
-summary(pitch_data)
+pitch_data <- read.csv("pitch_data.csv",sep = ",")
+pitch_data <- plyr::rename(pitch_data, c("file" = "soundname", "subject" = "Participant", "study" = "Study", "diagnosis" = "Diagnosis"))
+#Remoev X
+pitch_data <- pitch_data[,-1]
+#Participant as numeric
+pitch_data$Participant <- as.numeric(pitch_data$Participant)
+pitch_data$Diagnosis <- as.numeric(pitch_data$Diagnosis)
+pitch_data$Study <- as.numeric(pitch_data$Study)
+#Add 1000 to participant number for study 5 and 6 as these are not unique
+pitch_data$Participant <- ifelse(pitch_data$Study == 5|pitch_data$Study == 6, pitch_data$Participant + 1000, pitch_data$Participant)
 # Now we merge them
+demo_pitch <- merge(demographic, pitch_data, by = c("Study", "Participant", "Diagnosis"))
+demo_pitch_art <- merge(demo_pitch, art, by = "soundname")
 art_pitch <- merge(art, pitch_data, by = "soundname")
 art_pitch_demo <- merge(art_pitch, demographic, by = "Participant")
-summary(art_pitch_demo)
 # Now we save them
+
 
 ```
 
@@ -163,7 +175,23 @@ Finally, do the same by diagnosis and study, to assess systematic differences in
 I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
-
+#Remove NAs from data
+data <- demo_pitch_art[complete.cases(demo_pitch_art),]
+#Summary of data
+data %>% group_by(Diagnosis) %>%  
+  summarize(
+      n_F = sum(Gender == "F"),
+      n_M = sum(Gender == "M"),
+      mean_age = mean(Age),
+      sd_age = sd(Age),
+      mean_SANS = mean(SANS),
+      sd_SANS = sd(SANS),
+      mean_SAPS = mean(SAPS),
+      sd_SANS = sd(SAPS),
+      mean_V_IQ = mean(VerbalIQ),
+      mean_NV_IQ = mean(NonVerbalIQ),
+      mean_T_IQ = mean(TotalIQ)
+)
 ```
 
 ## Now we can analyze the data
