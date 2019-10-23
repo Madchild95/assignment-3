@@ -100,7 +100,7 @@ See placeholder code here for help.
 
 ```{r}
 library(pacman)
-pacman::p_load(tidyverse, purrr, plyr)
+pacman::p_load(tidyverse, purrr, plyr, lmer4, lmerTest)
 
 read_pitch <- function(filename) {
     # load data
@@ -140,8 +140,6 @@ write.csv(pitch_data, file = "pitch_data.csv")
 ```{r}
 # Let's start with the demographic and clinical data
 demographic <- read.csv("DemographicData.csv",sep = ";")
-#Add 1000 to participant number for study 5 and 6 as these are not unique
-demographic$Participant <- ifelse(demographic$Study == 5|demographic$Study == 6, demographic$Participant + 1000, demographic$Participant)
 #Diagnosis as 0 and 1
 demographic$Diagnosis <- ifelse(demographic$Diagnosis=="Control", 0, 1)
 # then duration data
@@ -155,15 +153,16 @@ pitch_data <- pitch_data[,-1]
 pitch_data$Participant <- as.numeric(pitch_data$Participant)
 pitch_data$Diagnosis <- as.numeric(pitch_data$Diagnosis)
 pitch_data$Study <- as.numeric(pitch_data$Study)
-#Add 1000 to participant number for study 5 and 6 as these are not unique
-pitch_data$Participant <- ifelse(pitch_data$Study == 5|pitch_data$Study == 6, pitch_data$Participant + 1000, pitch_data$Participant)
 # Now we merge them
 demo_pitch <- merge(demographic, pitch_data, by = c("Study", "Participant", "Diagnosis"))
 demo_pitch_art <- merge(demo_pitch, art, by = "soundname")
-art_pitch <- merge(art, pitch_data, by = "soundname")
-art_pitch_demo <- merge(art_pitch, demographic, by = "Participant")
+#create unique pair ID and unique ID
+data <- demo_pitch_art %>% mutate(uPairID = paste(Participant, Study, sep = "_"),  #create unique pair ID
+                 uID = paste(Participant, Study, Diagnosis, sep = "_")) #create unique ID
+data$uPairID <- as.numeric(as.factor(data$uPairID))
+data$uID <- as.numeric(as.factor(data$uID))
 # Now we save them
-
+write.csv(data, file = "demo_pitch_art.csv")
 
 ```
 
@@ -176,7 +175,7 @@ I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
 #Remove NAs from data
-data <- demo_pitch_art[complete.cases(demo_pitch_art),]
+data <- data[complete.cases(data),]
 #Summary of data
 data %>% group_by(Diagnosis) %>%  
   summarize(
@@ -195,14 +194,15 @@ data %>% group_by(Diagnosis) %>%
 ```
 
 ## Now we can analyze the data
-
-If we look at the meta-analysis, there are differences (measured as Hedges' g, very close to Cohen's d, that is, in standard deviations) in
+If you were to examine the meta analysis you would find that the differences (measured as Hedges' g, very close to Cohen's d, that is, in standard deviations) to be the following
 - pitch variability (lower, Hedges' g: -0.55, 95% CIs: -1.06, 0.09)
 - proportion of spoken time (lower, Hedges' g: -1.26, 95% CIs: -2.26, 0.25)
 - speech rate (slower, Hedges' g: -0.75, 95% CIs: -1.51, 0.04)
 - pause duration (longer, Hedges' g: 1.89, 95% CIs: 0.72, 3.21). (Duration - Spoken Duration) / PauseN
 
-We need therefore to set up 4 models to replicate the findings. Feel free of course to test more features.
+We need therefore to set up 4 models to see how well our results compare to the meta-analytic findings (Feel free of course to test more features)
+Describe the acoustic profile of a schizophrenic voice
+*Note* in this section you need to describe the acoustic profile of a schizophrenic voice and compare it with the meta-analytic findings (see 2 and 3 in overview of part 1).
 
 N.B. the meta-analytic findings are on scaled measures. If you want to compare your results with them, you need to scale your measures as well: subtract the mean, and divide by the standard deviation.
 N.N.B. We want to think carefully about fixed and random effects in our model. In particular: how should study be included? Does it make sense to have all studies put together? Does it make sense to analyze both languages together? Relatedly: does it make sense to scale all data from all studies together?
@@ -210,8 +210,46 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 
 - Bonus points: cross-validate the models and report the betas and standard errors from all rounds to get an idea of how robust the estimates are. 
 
-```{r}
 
+```{r}
+#Remane in data
+data <- plyr::rename(data, c("dur..s." = "FullDuration","phonationtime..s."="PhonatationTime","speechrate..nsyll.dur."="Speechrate","articulation.rate..nsyll...phonationtime."="ArticulationTime","ASD..speakingtime.nsyll."="AverageSyllableDuration"))
+#Make into a tibble
+data <- as_tibble(data)
+#Create pause duration
+data$PauseDuration <- ifelse(data$npause == 0, 0, (data$FullDuration-data$PhonatationTime)/(data$npause))
+#Make a list of columns to scale
+data_scale <- (c("Education","SANS","SAPS","VerbalIQ","NonVerbalIQ","TotalIQ","sd_pitch","mean_pitch","iqr_pitch","min_pitch","max_pitch","nsyll","npause","FullDuration","PhonatationTime","Speechrate","ArticulationTime","AverageSyllableDuration", "PauseDuration"))
+#Make a function for scaling
+scale2 <- function(x, na.rm = FALSE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
+#Scaling relevant data
+data_numeric <- data %>% mutate_at(data_scale, as.numeric)
+data_scaled <- data_numeric %>% mutate_at(
+  data_scale, 
+  scale2)
+#Create a df for nationality
+data_scaled_by_language <- data_numeric %>%
+  group_by(Language) %>% 
+  mutate_at(
+    data_scale,
+    scale2
+  )
+
+# pitch variability 
+pitch_variability_model1 <- lmer(iqr_pitch ~ 1 + Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+summary(pitch_variability_model1)
+# proportion of spoken time
+spoken_time_model1 <- lmer(PhonatationTime ~ 1 + Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+summary(spoken_time_model1)
+# speech rate 
+speech_rate_model1 <- pitch_variability_model1 <- lmer(Speechrate ~ 1 + Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+summary(speech_rate_model1)
+# pause duration  (Duration - Spoken Duration) / PauseN
+pause_duration_model1 <- lmer(PauseDuration ~ 1 + Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+summary(pause_duration_model1)
+
+#finding confidence intervals
+confint(pause_duration_model1)
 ```
 
 ## N.B. Remember to save the acoustic features of voice in a separate file, so to be able to load them next time
@@ -220,9 +258,21 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 ## Reminder of the report to write 
 
 Part 1 - Can we find a difference in acoustic features in schizophrenia?
-- Describe your sample (n of studies, n of participants, age, gender, clinical and cognitive features of the two groups) and critically assess whether the groups (schizophrenia and controls) are balanced. N.B. you need to take studies into account.
-- Discuss the analysis necessary to replicate the meta-analytic findings: which fixed and random effects should be included, given your dataset? E.g. what about language and study, age and gender? Discuss also how studies and languages should play a role in your analyses. E.g. should you analyze each study individually? Or each language individually? Or all together? Each of these choices makes some assumptions about how similar you expect the studies/languages to be.
-- Describe the acoustic profile of a schizophrenic voice: which features are different? E.g. People with schizophrenia tend to have high-pitched voice, and present bigger swings in their prosody than controls. N.B. look also at effect sizes. How do these findings relate to the meta-analytic findings?
+
+1) Describe your sample 
+number of studies, number of participants, age, gender, clinical and cognitive features of the two groups. Furthemore, critically assess whether the groups (schizophrenia and controls) are balanced. N.B. you need to take studies into account.
+
+
+2) Describe the acoustic profile of a schizophrenic voice: which features are different?
+E.g. People with schizophrenia tend to have high-pitched voice, and present bigger swings in their prosody than controls. N.B. look also at effect sizes. How do these findings relate to the meta-analytic findings?
+
+3) Discuss the analysis necessary to replicate the meta-analytic findings
+Look at the results reported in the paper (see meta-analysis in the readings) and see whether they are similar to those you get.
+    3.1) Check whether significance and direction of the effects are similar
+    3.2) Standardize your outcome, run the model and check whether the beta's is roughly matched (matched with hedge's g)
+which fixed and random effects should be included, given your dataset? E.g. what about language and study, age and gender? Discuss also how studies and languages should play a role in your analyses. E.g. should you analyze each study individually? Or each language individually? Or all together? Each of these choices makes some assumptions about how similar you expect the studies/languages to be.
+
+
 - Your report should look like a methods paragraph followed by a result paragraph in a typical article (think the Communication and Cognition paper)
 
 
