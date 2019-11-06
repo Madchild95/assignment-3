@@ -49,10 +49,11 @@ N.N.N.N.B. A more advanced solution could rely on the tidymodels set of packages
 ```{r}
 # load
 library(tidyverse,pacman)
-pacman::p_load(purrr,janitor, lme4, glmmnet, parsnip)
+pacman::p_load(purrr,janitor, lme4, parsnip, groupdata2, tidymodels, caret, e1071, pROC, cvms, kernlab, randomForest, xgboost)
 
 # load csv
 feature_df <- read.csv("acoustic_features_by_language.csv")
+
 ```
 
 2. Find best feature from A3P1 (by AIC and BIC on training data)
@@ -60,17 +61,17 @@ a) by creating logistic regressions for each feature (all 4)
 b) Think carefully as to how we should (or not) use study and subject ID
 c) Then run ANOVA
 ```{r}
-#creating logistic regressions
-model1 <- glmer(Diagnosis ~ 1 + iqr_pitch + (1|uID), data = feature_df, family = "binomial")
+#creating logistic regressions for choosing best feature
+model1 <- glmer(Diagnosis ~ PitchVariability + (1|uID), data = feature_df, family = "binomial")
 summary(model1)
 
-model2 <- glmer(Diagnosis ~ 1 + PhonatationTime + (1|uID), data = feature_df, family = "binomial")
+model2 <- glmer(Diagnosis ~ PhonatationTime + (1|uID), data = feature_df, family = "binomial")
 summary(model2)
 
-model3 <- glmer(Diagnosis ~ 1 + Speechrate + (1|uID), data = feature_df, family = "binomial")
+model3 <- glmer(Diagnosis ~ Speechrate + (1|uID), data = feature_df, family = "binomial")
 summary(model3)
 
-model4 <- glmer(Diagnosis ~ 1 + PauseDuration + (1|uID), data = feature_df, family = "binomial")
+model4 <- glmer(Diagnosis ~ PauseDuration + (1|uID), data = feature_df, family = "binomial")
 summary(model4)
 
 #sammenlign
@@ -79,7 +80,27 @@ anova(model1, model2, model3, model4)
 
 3. assess accuracy, sensitivity, PPV, NPV and ROC curves, when predicting on all the data the model has been trained on
 ```{r}
-s
+#add 1000 to uID
+feature_df$uID <- feature_df$uID + 1000
+
+simple_model <- glm(Diagnosis ~ PhonatationTime, data = feature_df, family = "binomial")
+
+predicted_values <- predict(simple_model, feature_df, allow.new.levels = T)
+pred_df <- tibble(predictions = predicted_values, actual = feature_df$Diagnosis) 
+pred_df$predictions = ifelse(pred_df$predictions < 0.0, "0", "1") 
+pred_df$predictions <- as_factor(pred_df$predictions)
+pred_df$actual <- as_factor(pred_df$actual)#make sure it is a factor
+caret::confusionMatrix(pred_df$predictions, pred_df$actual, positive ="0")
+
+predicted_values2 <- predict(model2, feature_df, allow.new.levels = T)
+pred_df2 <- tibble(predictions = predicted_values2, actual = feature_df$Diagnosis) 
+pred_df2$predictions = ifelse(pred_df2$predictions < 0.0, "0", "1") 
+pred_df2$predictions <- as_factor(pred_df2$predictions)
+pred_df2$actual <- as_factor(pred_df2$actual)#make sure it is a factor
+caret::confusionMatrix(pred_df2$predictions, pred_df2$actual, positive ="0")
+
+
+plot(roc(pred_df2$predictions,feature_df$Diagnosis))
 
 ```
 
@@ -87,14 +108,26 @@ s
 a) remember to take ID into account, gender and diagnosis should be equally distributed across folds
 b) find out whether we should take study into account also
 ```{r}
-s
+
+featurefold <- groupdata2::fold(feature_df, k = 5, id_col = "uID", cat_col = c("Diagnosis", "Gender", "Study")) %>% arrange(.folds)
 
 ```
 
 5. Then cross-validate the logistic regression and re-calculate performance on the testing folds (cvms)
 ```{r}
-s
 
+CV1 <- cvms::cross_validate(featurefold, "Diagnosis ~ PhonatationTime + (1|uID)", 
+                      fold_cols = '.folds',
+                      family = "binomial",
+                      control = glmerControl(
+                        optimizer = "nloptwrap",
+                        calc.derivs = F,
+                        optCtrl=list(xtol_abs=1e-8, ftol_abs=1e-8, maxfun = 1000)),
+                      REML = FALSE,
+                      rm_nc = FALSE
+                      )
+head(CV1)
+cv_plot(CV1, type ='ROC')
 ```
 
 6. The best combination of features?
@@ -103,12 +136,138 @@ b) discuss above parameters
 c) choose best model(s)
 ```{r}
 s
+CV2 <- cvms::cross_validate(featurefold, "Diagnosis ~ PhonatationTime + PitchVariability + (1|uID)", 
+                       fold_cols = '.folds',
+                      family = "binomial",
+                      control = glmerControl(
+                        optimizer = "nloptwrap",
+                        calc.derivs = F,
+                        optCtrl=list(xtol_abs=1e-8, ftol_abs=1e-8, maxfun = 1000)),
+                      REML = FALSE,
+                      rm_nc = FALSE
+                      )
 
+head(CV2)
+# Plot results for binomial model
+cv_plot(CV2, type ='ROC')
 ```
 
 7. Try other classification methods (Discriminant Function, Random Forest, Support Vector Machine, etc. The package caret provides them.)
 ```{r}
-s
+#Load unscaled data
+df <- read.csv("features_unscaled.csv") %>% 
+  mutate_at(c("Diagnosis"), as.factor)
+
+#Choosing the relevant features
+df <- df %>% select('Gender','Diagnosis','Study','PhonatationTime','PitchVariability','Speechrate','PauseDuration','uID')
+
+##Paritioning##
+set.seed(5)
+df_list <- partition(df, p = 0.2, cat_col = c("Diagnosis", "Gender", "Study"), id_col = "uID", list_out = T)
+df_test = df_list[[1]]
+df_train = df_list[[2]]
+
+#Removing ID column
+df_test <- df_test %>% 
+  select(-uID)
+df_train <- df_train %>% 
+  select(-uID)
+
+#create recipe
+rec <- df_train %>% recipe(Diagnosis ~ .) %>% # defines the outcome
+  step_center(all_numeric()) %>% # center numeric predictors
+  step_scale(all_numeric()) %>% # scales numeric predictors
+  step_corr(all_numeric()) %>% 
+  prep(training = df_train)
+
+train_baked <- juice(rec) # extract df_train from rec
+
+rec #inspect rec
+
+#Applying recepe to a test
+test_baked <- rec %>% bake(df_test)
+
+#Demonstration of different ways of doing the same process
+juice(rec) 
+rec %>% bake(df_train)
+
+##Creating models##
+#logistic regression
+log_fit <- 
+  logistic_reg() %>%
+  set_mode("classification") %>% 
+  set_engine("glm") %>%
+  fit(Diagnosis ~ . , data = train_baked)
+
+#support vector machine
+svm_fit <-
+  svm_rbf() %>%
+  set_mode("classification") %>% 
+  set_engine("kernlab") %>%
+  fit(Diagnosis ~ . , data = train_baked)
+
+#random forest
+RanfomForest <-
+  rand_forest() %>%
+  set_mode("classification") %>% 
+  set_engine("randomForest") %>%
+  fit(Diagnosis ~ . , data = train_baked)
+
+#boosted tree
+BoostedTree <-
+  boost_tree() %>%
+  set_mode("classification") %>% 
+  set_engine("xgboost") %>%
+  fit(Diagnosis ~ . , data = train_baked)
+
+##Applying models to test set##
+
+#get multiple at once
+test_results <- 
+  test_baked %>% 
+  select(Diagnosis) %>% 
+  mutate(
+    log_class = predict(log_fit, new_data = test_baked) %>% 
+      pull(.pred_class), #predicting class
+    log_prob  = predict(log_fit, new_data = test_baked, type = "prob") %>% 
+      pull(.pred_1), #probability outcome
+    svm_class = predict(svm_fit, new_data = test_baked) %>% 
+      pull(.pred_class), 
+    svm_prob  = predict(svm_fit, new_data = test_baked, type = "prob") %>% 
+      pull(.pred_1),
+    ranfor_class = predict(RanfomForest, new_data = test_baked) %>% 
+      pull(.pred_class),
+    ranfor_prob  = predict(RanfomForest, new_data = test_baked, type = "prob") %>% 
+      pull(.pred_1),
+    btree_class = predict(BoostedTree, new_data = test_baked) %>% 
+      pull(.pred_class),
+    btree_prob  = predict(BoostedTree, new_data = test_baked, type = "prob") %>% 
+      pull(.pred_1)
+  )
+  
+view(test_results)
+###Performance
+
+#Performance metrics
+metrics(test_results, truth = Diagnosis, estimate = log_class) %>% view()
+metrics(test_results, truth = Diagnosis, estimate = svm_class) %>% view() #best accuracy
+metrics(test_results, truth = Diagnosis, estimate = ranfor_class) %>% view()
+metrics(test_results, truth = Diagnosis, estimate = btree_class) %>% view()
+
+#ROC curve
+#plotting the roc curve:
+test_results %>%
+  roc_curve(truth = Diagnosis, log_prob) %>% 
+  autoplot()
+test_results %>%
+  roc_curve(truth = Diagnosis, svm_prob) %>% 
+  autoplot()
+test_results %>%
+  roc_curve(truth = Diagnosis, ranfor_prob) %>% 
+  autoplot()
+test_results %>%
+  roc_curve(truth = Diagnosis, btree_prob) %>% 
+  autoplot()
 
 ```
 
