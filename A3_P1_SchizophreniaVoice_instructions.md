@@ -168,39 +168,37 @@ file names (Participant, Diagnosis, Trial, Study) Only then (when
 everything works) turn the code into a function and use map\_df() to
 apply it to all the files. See placeholder code here for help.
 
-``` r
-library(pacman)
-pacman::p_load(tidyverse, purrr, dplyr, lme4, lmerTest)
+    library(pacman)
+    pacman::p_load(tidyverse, purrr, dplyr, lme4, lmerTest)
 
-read_pitch <- function(filename) {
-    # load data
-    file <- read.delim(filename)
-    # parse filename to extract study, diagnosis, subject and trial
-    match <- str_match(filename, "Study([\\d]+)D([\\d]+)S([\\d]+)T([\\d]+)")
-    # extract pitch descriptors (mean, sd, iqr, etc)
-    desc <- file %>% dplyr::summarize(
-      sd_pitch = sd(f0),
-      mean_pitch = mean(f0),
-      IQR_pitch = IQR(f0),
-      min_pitch = min(f0),
-      max_pitch = max(f0)
-      )
-    # combine all this data in one dataset
-    data <- cbind(match,desc)
-    
-    x <- c("file", "study", "diagnosis", "subject", "trial", "sd_pitch", "mean_pitch", "iqr_pitch", "min_pitch", "max_pitch")
-    
-    colnames(data) <- x
-    return(data)
-}
+    read_pitch <- function(filename) {
+        # load data
+        file <- read.delim(filename)
+        # parse filename to extract study, diagnosis, subject and trial
+        match <- str_match(filename, "Study([\\d]+)D([\\d]+)S([\\d]+)T([\\d]+)")
+        # extract pitch descriptors (mean, sd, iqr, etc)
+        desc <- file %>% dplyr::summarize(
+          sd_pitch = sd(f0),
+          mean_pitch = mean(f0),
+          IQR_pitch = IQR(f0),
+          min_pitch = min(f0),
+          max_pitch = max(f0)
+          )
+        # combine all this data in one dataset
+        data <- cbind(match,desc)
+        
+        x <- c("file", "study", "diagnosis", "subject", "trial", "sd_pitch", "mean_pitch", "iqr_pitch", "min_pitch", "max_pitch")
+        
+        colnames(data) <- x
+        return(data)
+    }
 
-# test it on just one file while writing the function
-test_data = read_pitch("Pitch/Study1D0S101T1_f0.txt")
+    # test it on just one file while writing the function
+    test_data = read_pitch("Pitch/Study1D0S101T1_f0.txt")
 
-# when you've created a function that works, you can
-pitch_data = list.files(path = "/Users/matilde/Desktop/AU/Experimental Methods III/Assignment 3/assignment-3/Pitch",pattern = ".txt", full.names = T) %>% ## NB replace with your path to the files
-    purrr::map_df(read_pitch)
-```
+    # when you've created a function that works, you can
+    pitch_data = list.files(path = "/Users/matilde/Desktop/AU/Experimental Methods III/Assignment 3/assignment-3/Pitch",pattern = ".txt", full.names = T) %>% ## NB replace with your path to the files
+        purrr::map_df(read_pitch)
 
     ## Warning in bind_rows_(x, .id): Unequal factor levels: coercing to character
 
@@ -57188,39 +57186,35 @@ pitch_data = list.files(path = "/Users/matilde/Desktop/AU/Experimental Methods I
     ## Warning in bind_rows_(x, .id): binding character and factor vector,
     ## coercing into character vector
 
-``` r
-write.csv(pitch_data, file = "pitch_data.csv")
-```
+    write.csv(pitch_data, file = "pitch_data.csv")
 
 ### Now you need to merge demographic/clinical, duration and pitch data
 
-``` r
-# Let's start with the demographic and clinical data
-demographic <- read.csv("DemographicData.csv",sep = ";")
-#Diagnosis as 0 and 1
-demographic$Diagnosis <- ifelse(demographic$Diagnosis=="Control", 0, 1)
-# then duration data
-art <- read.delim("Articulation.txt",sep = ",")
-# Finally the pitch data
-pitch_data <- read.csv("pitch_data.csv",sep = ",")
-pitch_data <- plyr::rename(pitch_data, c("file" = "soundname", "subject" = "Participant", "study" = "Study", "diagnosis" = "Diagnosis"))
-#Remoev X
-pitch_data <- pitch_data[,-1]
-#Participant as numeric
-pitch_data$Participant <- as.numeric(pitch_data$Participant)
-pitch_data$Diagnosis <- as.numeric(pitch_data$Diagnosis)
-pitch_data$Study <- as.numeric(pitch_data$Study)
-# Now we merge them
-demo_pitch <- merge(demographic, pitch_data, by = c("Study", "Participant", "Diagnosis"))
-demo_pitch_art <- merge(demo_pitch, art, by = "soundname")
-#create unique pair ID and unique ID
-data <- demo_pitch_art %>% mutate(uPairID = paste(Participant, Study, sep = "_"),  #create unique pair ID
-                 uID = paste(Participant, Study, Diagnosis, sep = "_")) #create unique ID
-data$uPairID <- as.numeric(as.factor(data$uPairID))
-data$uID <- as.numeric(as.factor(data$uID))
-# Now we save them
-write.csv(data, file = "demo_pitch_art.csv")
-```
+    # Let's start with the demographic and clinical data
+    demographic <- read.csv("DemographicData.csv",sep = ";")
+    #Diagnosis as 0 and 1
+    demographic$Diagnosis <- ifelse(demographic$Diagnosis=="Control", 0, 1)
+    # then duration data
+    art <- read.delim("Articulation.txt",sep = ",")
+    # Finally the pitch data
+    pitch_data <- read.csv("pitch_data.csv",sep = ",")
+    pitch_data <- plyr::rename(pitch_data, c("file" = "soundname", "subject" = "Participant", "study" = "Study", "diagnosis" = "Diagnosis"))
+    #Remoev X
+    pitch_data <- pitch_data[,-1]
+    #Participant as numeric
+    pitch_data$Participant <- as.numeric(pitch_data$Participant)
+    pitch_data$Diagnosis <- as.numeric(pitch_data$Diagnosis)
+    pitch_data$Study <- as.numeric(pitch_data$Study)
+    # Now we merge them
+    demo_pitch <- merge(demographic, pitch_data, by = c("Study", "Participant", "Diagnosis"))
+    demo_pitch_art <- merge(demo_pitch, art, by = "soundname")
+    #create unique pair ID and unique ID
+    data <- demo_pitch_art %>% mutate(uPairID = paste(Participant, Study, sep = "_"),  #create unique pair ID
+                     uID = paste(Participant, Study, Diagnosis, sep = "_")) #create unique ID
+    data$uPairID <- as.numeric(as.factor(data$uPairID))
+    data$uID <- as.numeric(as.factor(data$uID))
+    # Now we save them
+    write.csv(data, file = "demo_pitch_art.csv")
 
 Now we need to describe our sample
 ----------------------------------
@@ -57232,35 +57226,33 @@ recordinsgs by diagnosis, report their gender, age and symptom severity
 assess systematic differences in studies. I like to use group\_by()
 %&gt;% summarize() for quick summaries
 
-``` r
-#Renaming data
-data <- plyr::rename(data, c("dur..s." = "FullDuration","phonationtime..s."="PhonatationTime","speechrate..nsyll.dur."="Speechrate","articulation.rate..nsyll...phonationtime."="ArticulationTime","ASD..speakingtime.nsyll."="AverageSyllableDuration", "iqr_pitch"="PitchVariability"))
+    #Renaming data
+    data <- plyr::rename(data, c("dur..s." = "FullDuration","phonationtime..s."="PhonatationTime","speechrate..nsyll.dur."="Speechrate","articulation.rate..nsyll...phonationtime."="ArticulationTime","ASD..speakingtime.nsyll."="AverageSyllableDuration", "iqr_pitch"="PitchVariability"))
 
-#Remove NAs from data
-completeFun <- function(data, desiredCols) {
-  completeVec <- complete.cases(data[, desiredCols])
-  return(data[completeVec, ])
-}
-data <- completeFun(data, c("soundname","Study","Diagnosis","Participant","Language","Gender","npause","PitchVariability", "PhonatationTime", "Speechrate"))
+    #Remove NAs from data
+    completeFun <- function(data, desiredCols) {
+      completeVec <- complete.cases(data[, desiredCols])
+      return(data[completeVec, ])
+    }
+    data <- completeFun(data, c("soundname","Study","Diagnosis","Participant","Language","Gender","npause","PitchVariability", "PhonatationTime", "Speechrate"))
 
-#Summary of data by diagnosis
+    #Summary of data by diagnosis
 
-summary_diagnosis <- data %>% group_by(Diagnosis) %>%
-  summarize(
-      n_F = sum(Gender == "F", na.rm = T),
-      n_M = sum(Gender == "M", na.rm = T),
-      mean_age = mean(Age, na.rm = T),
-      sd_age = sd(Age, na.rm = T),
-      mean_SANS = mean(SANS, na.rm = T),
-      sd_SANS = sd(SANS, na.rm = T),
-      mean_SAPS = mean(SAPS, na.rm = T),
-      sd_SANS = sd(SAPS, na.rm = T),
-      mean_V_IQ = mean(VerbalIQ, na.rm = T),
-      mean_NV_IQ = mean(NonVerbalIQ, na.rm = T),
-      mean_T_IQ = mean(TotalIQ, na.rm = T)
-)
-head(summary_diagnosis)
-```
+    summary_diagnosis <- data %>% group_by(Diagnosis) %>%
+      summarize(
+          n_F = sum(Gender == "F", na.rm = T),
+          n_M = sum(Gender == "M", na.rm = T),
+          mean_age = mean(Age, na.rm = T),
+          sd_age = sd(Age, na.rm = T),
+          mean_SANS = mean(SANS, na.rm = T),
+          sd_SANS = sd(SANS, na.rm = T),
+          mean_SAPS = mean(SAPS, na.rm = T),
+          sd_SANS = sd(SAPS, na.rm = T),
+          mean_V_IQ = mean(VerbalIQ, na.rm = T),
+          mean_NV_IQ = mean(NonVerbalIQ, na.rm = T),
+          mean_T_IQ = mean(TotalIQ, na.rm = T)
+    )
+    head(summary_diagnosis)
 
     ## # A tibble: 2 x 11
     ##   Diagnosis   n_F   n_M mean_age sd_age mean_SANS sd_SANS mean_SAPS
@@ -57270,24 +57262,22 @@ head(summary_diagnosis)
     ## # … with 3 more variables: mean_V_IQ <dbl>, mean_NV_IQ <dbl>,
     ## #   mean_T_IQ <dbl>
 
-``` r
-#Summary of data by study
-summary_study <- data %>% group_by(Study) %>% 
-  summarize(
-      n_F = sum(Gender == "F", na.rm = T),
-      n_M = sum(Gender == "M", na.rm = T),
-      mean_age = mean(Age, na.rm = T),
-      sd_age = sd(Age, na.rm = T),
-      mean_SANS = mean(SANS, na.rm = T),
-      sd_SANS = sd(SANS, na.rm = T),
-      mean_SAPS = mean(SAPS, na.rm = T),
-      sd_SANS = sd(SAPS, na.rm = T),
-      mean_V_IQ = mean(VerbalIQ, na.rm = T),
-      mean_NV_IQ = mean(NonVerbalIQ, na.rm = T),
-      mean_T_IQ = mean(TotalIQ, na.rm = T)
-)
-head(summary_study)
-```
+    #Summary of data by study
+    summary_study <- data %>% group_by(Study) %>% 
+      summarize(
+          n_F = sum(Gender == "F", na.rm = T),
+          n_M = sum(Gender == "M", na.rm = T),
+          mean_age = mean(Age, na.rm = T),
+          sd_age = sd(Age, na.rm = T),
+          mean_SANS = mean(SANS, na.rm = T),
+          sd_SANS = sd(SANS, na.rm = T),
+          mean_SAPS = mean(SAPS, na.rm = T),
+          sd_SANS = sd(SAPS, na.rm = T),
+          mean_V_IQ = mean(VerbalIQ, na.rm = T),
+          mean_NV_IQ = mean(NonVerbalIQ, na.rm = T),
+          mean_T_IQ = mean(TotalIQ, na.rm = T)
+    )
+    head(summary_study)
 
     ## # A tibble: 6 x 11
     ##   Study   n_F   n_M mean_age sd_age mean_SANS sd_SANS mean_SAPS mean_V_IQ
@@ -57300,12 +57290,10 @@ head(summary_study)
     ## 6     6   580   645     29.9   8.80      5.35    3.48      9.50      96.4
     ## # … with 2 more variables: mean_NV_IQ <dbl>, mean_T_IQ <dbl>
 
-``` r
-#Create pause duration
-data$PauseDuration <- ifelse(data$npause == 0, 0, (data$FullDuration-data$PhonatationTime)/(data$npause))
-#Creating dataset to use in tidymodels 
-write.csv(data, file = "features_unscaled.csv")
-```
+    #Create pause duration
+    data$PauseDuration <- ifelse(data$npause == 0, 0, (data$FullDuration-data$PhonatationTime)/(data$npause))
+    #Creating dataset to use in tidymodels 
+    write.csv(data, file = "features_unscaled.csv")
 
 Now we can analyze the data
 ---------------------------
@@ -57334,7 +57322,7 @@ particular: how should study be included? Does it make sense to have all
 studies put together? Does it make sense to analyze both languages
 together? Relatedly: does it make sense to scale all data from all
 studies together? N.N.N.B. If you want to estimate the studies
-separately, you can try this syntax: Feature \~ 0 + Study +
+separately, you can try this syntax: Feature ~ 0 + Study +
 Study:Diagnosis + \[your randomEffects\]. Now you’ll have an intercept
 per each study (the estimates for the controls) and an effect of
 diagnosis per each study
@@ -57343,29 +57331,29 @@ diagnosis per each study
     standard errors from all rounds to get an idea of how robust the
     estimates are.
 
-``` r
-#Make a list of columns to scale
-data_scale <- (c("Education","SANS","SAPS","VerbalIQ","NonVerbalIQ","TotalIQ","sd_pitch","mean_pitch","PitchVariability","min_pitch","max_pitch","nsyll","npause","FullDuration","PhonatationTime","Speechrate","ArticulationTime","AverageSyllableDuration", "PauseDuration"))
-#Make a function for scaling
-scale2 <- function(x, na.rm = FALSE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
-#Scaling relevant data
-data_numeric <- data %>% mutate_at(data_scale, as.numeric)
-data_scaled <- data_numeric %>% mutate_at(
-  data_scale, 
-  scale2)
-#Create a df for nationality
-data_scaled_by_language <- data_numeric %>%
-  group_by(Language) %>% 
-  mutate_at(
-    data_scale,
-    scale2
-  )
-##Making logistic regression models of acoustic features predicted by diagnosis##
+<!-- -->
 
-# pitch variability 
-pitch_variability_model1 <- lmer(PitchVariability ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
-summary(pitch_variability_model1)
-```
+    #Make a list of columns to scale
+    data_scale <- (c("Education","SANS","SAPS","VerbalIQ","NonVerbalIQ","TotalIQ","sd_pitch","mean_pitch","PitchVariability","min_pitch","max_pitch","nsyll","npause","FullDuration","PhonatationTime","Speechrate","ArticulationTime","AverageSyllableDuration", "PauseDuration"))
+    #Make a function for scaling
+    scale2 <- function(x, na.rm = FALSE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
+    #Scaling relevant data
+    data_numeric <- data %>% mutate_at(data_scale, as.numeric)
+    data_scaled <- data_numeric %>% mutate_at(
+      data_scale, 
+      scale2)
+    #Create a df for nationality
+    data_scaled_by_language <- data_numeric %>%
+      group_by(Language) %>% 
+      mutate_at(
+        data_scale,
+        scale2
+      )
+    ##Making logistic regression models of acoustic features predicted by diagnosis##
+
+    # pitch variability 
+    pitch_variability_model1 <- lmer(PitchVariability ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+    summary(pitch_variability_model1)
 
     ## Linear mixed model fit by maximum likelihood . t-tests use
     ##   Satterthwaite's method [lmerModLmerTest]
@@ -57397,11 +57385,9 @@ summary(pitch_variability_model1)
     ##           (Intr)
     ## Diagnosis -0.917
 
-``` r
-# proportion of spoken time (phonatation time)
-spoken_time_model1 <- lmer(PhonatationTime ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
-summary(spoken_time_model1)
-```
+    # proportion of spoken time (phonatation time)
+    spoken_time_model1 <- lmer(PhonatationTime ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+    summary(spoken_time_model1)
 
     ## Linear mixed model fit by maximum likelihood . t-tests use
     ##   Satterthwaite's method [lmerModLmerTest]
@@ -57433,11 +57419,9 @@ summary(spoken_time_model1)
     ##           (Intr)
     ## Diagnosis -0.648
 
-``` r
-# speech rate 
-speech_rate_model1 <- lmer(Speechrate ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
-summary(speech_rate_model1)
-```
+    # speech rate 
+    speech_rate_model1 <- lmer(Speechrate ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+    summary(speech_rate_model1)
 
     ## Linear mixed model fit by maximum likelihood . t-tests use
     ##   Satterthwaite's method [lmerModLmerTest]
@@ -57469,11 +57453,9 @@ summary(speech_rate_model1)
     ##           (Intr)
     ## Diagnosis -0.631
 
-``` r
-# pause duration  (Duration - Spoken Duration) / PauseN
-pause_duration_model1 <- lmer(PauseDuration ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
-summary(pause_duration_model1)
-```
+    # pause duration  (Duration - Spoken Duration) / PauseN
+    pause_duration_model1 <- lmer(PauseDuration ~ Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+    summary(pause_duration_model1)
 
     ## Linear mixed model fit by maximum likelihood . t-tests use
     ##   Satterthwaite's method [lmerModLmerTest]
@@ -57503,13 +57485,11 @@ summary(pause_duration_model1)
     ##           (Intr)
     ## Diagnosis -0.479
 
-``` r
-#saving acoustic features of voice
-write.csv(data_scaled_by_language, file = "acoustic_features_by_language.csv")
+    #saving acoustic features of voice
+    write.csv(data_scaled_by_language, file = "acoustic_features_by_language.csv")
 
-#anova to find the best feature
-anova(pitch_variability_model1, spoken_time_model1, speech_rate_model1, pause_duration_model1)
-```
+    #anova to find the best feature
+    anova(pitch_variability_model1, spoken_time_model1, speech_rate_model1, pause_duration_model1)
 
     ## Data: data_scaled_by_language
     ## Models:
