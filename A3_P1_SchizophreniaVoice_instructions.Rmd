@@ -1,8 +1,10 @@
 ---
 title: "Assignment 3 - Part 1 - Voice In Schizophrenia"
-author: "Riccardo Fusaroli"
-date: "August 09, 2019"
-output: html_document
+author: "Matilde Jacobsen"
+date: "October 23, 2019"
+output: 
+  md_document:
+    variant: markdown_github
 editor_options: 
   chunk_output_type: console
 ---
@@ -174,23 +176,34 @@ Finally, do the same by diagnosis and study, to assess systematic differences in
 I like to use group_by() %>% summarize() for quick summaries
 
 ```{r}
+#Remane in data
+data <- plyr::rename(data, c("dur..s." = "FullDuration","phonationtime..s."="PhonatationTime","speechrate..nsyll.dur."="Speechrate","articulation.rate..nsyll...phonationtime."="ArticulationTime","ASD..speakingtime.nsyll."="AverageSyllableDuration", "iqr_pitch"="PitchVariability"))
+
 #Remove NAs from data
-data <- data[complete.cases(data),]
+completeFun <- function(data, desiredCols) {
+  completeVec <- complete.cases(data[, desiredCols])
+  return(data[completeVec, ])
+}
+data <- completeFun(data, c("soundname","Study","Diagnosis","Participant","Language","Gender","npause","PitchVariability", "PhonatationTime", "Speechrate"))
 #Summary of data
-data %>% group_by(Diagnosis) %>%  
+data %>% group_by(Diagnosis) %>%
   summarize(
-      n_F = sum(Gender == "F"),
-      n_M = sum(Gender == "M"),
-      mean_age = mean(Age),
-      sd_age = sd(Age),
-      mean_SANS = mean(SANS),
-      sd_SANS = sd(SANS),
-      mean_SAPS = mean(SAPS),
-      sd_SANS = sd(SAPS),
-      mean_V_IQ = mean(VerbalIQ),
-      mean_NV_IQ = mean(NonVerbalIQ),
-      mean_T_IQ = mean(TotalIQ)
+      n_F = sum(Gender == "F", na.rm = T),
+      n_M = sum(Gender == "M", na.rm = T),
+      mean_age = mean(Age, na.rm = T),
+      sd_age = sd(Age, na.rm = T),
+      mean_SANS = mean(SANS, na.rm = T),
+      sd_SANS = sd(SANS, na.rm = T),
+      mean_SAPS = mean(SAPS, na.rm = T),
+      sd_SANS = sd(SAPS, na.rm = T),
+      mean_V_IQ = mean(VerbalIQ, na.rm = T),
+      mean_NV_IQ = mean(NonVerbalIQ, na.rm = T),
+      mean_T_IQ = mean(TotalIQ, na.rm = T)
 )
+#Create pause duration
+data$PauseDuration <- ifelse(data$npause == 0, 0, (data$FullDuration-data$PhonatationTime)/(data$npause))
+write.csv(data, file = "features_unscaled.csv")
+
 ```
 
 ## Now we can analyze the data
@@ -212,14 +225,9 @@ N.N.N.B. If you want to estimate the studies separately, you can try this syntax
 
 
 ```{r}
-#Remane in data
-data <- plyr::rename(data, c("dur..s." = "FullDuration","phonationtime..s."="PhonatationTime","speechrate..nsyll.dur."="Speechrate","articulation.rate..nsyll...phonationtime."="ArticulationTime","ASD..speakingtime.nsyll."="AverageSyllableDuration"))
-#Make into a tibble
-data <- as_tibble(data)
-#Create pause duration
-data$PauseDuration <- ifelse(data$npause == 0, 0, (data$FullDuration-data$PhonatationTime)/(data$npause))
+
 #Make a list of columns to scale
-data_scale <- (c("Education","SANS","SAPS","VerbalIQ","NonVerbalIQ","TotalIQ","sd_pitch","mean_pitch","iqr_pitch","min_pitch","max_pitch","nsyll","npause","FullDuration","PhonatationTime","Speechrate","ArticulationTime","AverageSyllableDuration", "PauseDuration"))
+data_scale <- (c("Education","SANS","SAPS","VerbalIQ","NonVerbalIQ","TotalIQ","sd_pitch","mean_pitch","PitchVariability","min_pitch","max_pitch","nsyll","npause","FullDuration","PhonatationTime","Speechrate","ArticulationTime","AverageSyllableDuration", "PauseDuration"))
 #Make a function for scaling
 scale2 <- function(x, na.rm = FALSE) (x - mean(x, na.rm = na.rm)) / sd(x, na.rm)
 #Scaling relevant data
@@ -236,7 +244,7 @@ data_scaled_by_language <- data_numeric %>%
   )
 
 # pitch variability 
-pitch_variability_model1 <- lmer(iqr_pitch ~ 1 + Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
+pitch_variability_model1 <- lmer(PitchVariability ~ 1 + Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
 summary(pitch_variability_model1)
 # proportion of spoken time
 spoken_time_model1 <- lmer(PhonatationTime ~ 1 + Diagnosis + (1 + Diagnosis | uPairID), data = data_scaled_by_language, REML =F)
@@ -250,6 +258,12 @@ summary(pause_duration_model1)
 
 #finding confidence intervals
 confint(pause_duration_model1)
+
+#saving acoustic features of voice
+write.csv(data_scaled_by_language, file = "acoustic_features_by_language.csv")
+
+#anova
+anova(pitch_variability_model1, spoken_time_model1, speech_rate_model1, pause_duration_model1)
 ```
 
 ## N.B. Remember to save the acoustic features of voice in a separate file, so to be able to load them next time
